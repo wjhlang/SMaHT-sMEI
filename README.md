@@ -1,4 +1,8 @@
+<<<<<<< HEAD:README.md
 This is a section for the DSA and phasing analysis of the SMaHT MEI Benchmarking project by the effort from the SMaHT (Somatic Mosaicism across Human Tissues) MEI (Mobile Element Insertion) Working Group.
+=======
+This is a section for the DSA and phasing analysis of SMaHT MEI Benchmarking project by the effort from the SMaHT (Somatic Mosaicism across Human Tissues) MEI (Mobile Element Insertion) Working Group.
+>>>>>>> d1e638ae9c310158739175f9aa3b3e4931894561:README
 
 ### Command lines
 
