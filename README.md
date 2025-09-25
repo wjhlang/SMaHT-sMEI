@@ -2,7 +2,7 @@ This is a section for the DSA and phasing analysis of the SMaHT (Somatic Mosaici
 
 ### Command lines
 
-* For liftover from hg38 to DSA, or DSA to hg38, please check the scripts in folder 'REFtoDSA.liftover'
+* For liftover from hg38 to DSA, or DSA to hg38, please check the scripts in folder `REFtoDSA.liftover`.
 
 ### Tools for Haplotype phasing and DSA 
 
