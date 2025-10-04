@@ -2,11 +2,18 @@ This is a section for the DSA and phasing analysis of the SMaHT (Somatic Mosaici
 
 ### Command lines
 
-* DSA construction: ![alt text](https://github.com/wjhlang/SMaHT-sMEI/BL2009_Pipeline.jpg?raw=true)
+* DSA construction: 
+  <p align="center">
+    <a href="./BL2009_Pipeline.png">
+      <img src="./BL2009_Pipeline.png" width="520" alt="DSA construction pipeline">
+    </a>
+  </p>
   Verkko:
+  
   ```
   verkko -d verkko --threads 20 --hifi SRR28305169/SRR28305169.fastq --nano SRR31537472/SRR31537472.fastq SRR28305170/SRR28305170.fastq --porec SRR31537471/SRR31537471.fastq --unitig-abundance 4
   ```
+  
   Decontamination:
   ```
   
