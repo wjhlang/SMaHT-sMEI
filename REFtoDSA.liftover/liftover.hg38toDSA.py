@@ -200,6 +200,6 @@ with open(OUTPUT_FILE, "w") as fout, open(INPUT_FILE) as fin:
         n2 = len(hits2)
         if n2:
             for h in hits2:
-                fout.write(f"{chrom}\t{pos}\t{label}\t{grch38_start}\t{grch38_end}\thap2\t{n1}\t{h[0]}\t{h[1]}\t{h[2]}\t{h[6]}\t{h[3]}\t{h[4]}\t{h[5]}\t{h[7]}\t{h[8]}\t{h[9]}\n")
+                fout.write(f"{chrom}\t{pos}\t{label}\t{grch38_start}\t{grch38_end}\thap2\t{n2}\t{h[0]}\t{h[1]}\t{h[2]}\t{h[6]}\t{h[3]}\t{h[4]}\t{h[5]}\t{h[7]}\t{h[8]}\t{h[9]}\n")
         else:
             fout.write(f"{chrom}\t{pos}\t{label}\t{grch38_start}\t{grch38_end}\thap2\t0\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\n")
