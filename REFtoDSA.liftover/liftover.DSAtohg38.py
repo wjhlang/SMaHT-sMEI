@@ -8,7 +8,7 @@ from collections import defaultdict
 hap1_bam = "Hap1.verkko.sorted.bam"
 hap2_bam = "Hap2.verkko.sorted.bam"
 window = 100
-OUTPUT_FILE = "output_dsa_to_hg38_ver4.txt"
+OUTPUT_FILE = "output_dsa_to_hg38.txt"
 INPUT_FILE = "input_dsa.txt"
 allow_partial = False
 
