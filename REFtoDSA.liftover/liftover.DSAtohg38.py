@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 import pysam
+from collections import defaultdict
 
 # ======================
 # Parameters
 # ======================
-hap1_bam = "Hap1.chr10.bam"
-hap2_bam = "Hap2.chr10.bam"
+hap1_bam = "Hap1.verkko.sorted.bam"
+hap2_bam = "Hap2.verkko.sorted.bam"
 window = 100
 OUTPUT_FILE = "output_dsa_to_hg38.txt"
 INPUT_FILE = "input_dsa.txt"
-allow_partial = False  # Set True to allow partial coverage of ±window
+allow_partial = False
 
 
 # ======================
@@ -73,22 +74,30 @@ def map_window_query_to_ref(aln, win_query_start, win_query_end):
 
 
 # ======================
-# Get hits from BAM for DSA contig + pos
+# Process one BAM in a single pass
 # ======================
-def dsa_region_to_grch38_hits(bam_path, contig, pos_1based, debug=False):
-    hits = []
+def process_bam_single_pass(bam_path, site_dict, fout, hap):
+    """
+    site_dict: {contig_name: [(pos, label), ...]}
+    Returns set of (contig, pos) that were hit.
+    """
     bam = pysam.AlignmentFile(bam_path, "rb")
-    win_start = max(1, pos_1based - window)
-    win_end   = pos_1based + window
+    n_aln = 0
+    n_hit = 0
+    hit_set = set()  # track (contig, pos) pairs that got at least one hit
 
     for aln in bam.fetch(until_eof=True):
-        if aln.query_name != contig:
-            continue
-        # Include primary, secondary, and supplementary
+        n_aln += 1
+        if n_aln % 100000 == 0:
+            print(f"  [{hap}] {n_aln} alignments scanned, {n_hit} hits so far...")
+
         if aln.mapping_quality != 60:
             continue
 
-        # Strand-aware contig alignment start/end
+        contig = aln.query_name
+        if contig not in site_dict:
+            continue
+
         if aln.is_reverse:
             q_start_1b = aln.query_length - aln.query_alignment_end + 1
             q_end_1b   = aln.query_length - aln.query_alignment_start
@@ -96,59 +105,86 @@ def dsa_region_to_grch38_hits(bam_path, contig, pos_1based, debug=False):
             q_start_1b = aln.query_alignment_start + 1
             q_end_1b   = aln.query_alignment_end
 
-        # Check full coverage (or partial)
-        if not allow_partial:
-            if not (q_start_1b <= win_start and q_end_1b >= win_end):
+        for pos, label in site_dict[contig]:
+            win_start = max(1, pos - window)
+            win_end   = pos + window
+
+            if not allow_partial:
+                if not (q_start_1b <= win_start and q_end_1b >= win_end):
+                    continue
+            else:
+                if q_end_1b < win_start or q_start_1b > win_end:
+                    continue
+
+            ref_start, ref_end, n_M, n_eq, n_X = map_window_query_to_ref(aln, win_start, win_end)
+            if ref_start is None or ref_end is None:
                 continue
-        else:
-            # accept if any overlap with ±window
-            if q_end_1b < win_start or q_start_1b > win_end:
-                continue
 
-        ref_start, ref_end, n_M, n_eq, n_X = map_window_query_to_ref(aln, win_start, win_end)
-        if ref_start is None or ref_end is None:
-            continue
+            chrom    = aln.reference_name
+            strand   = '-' if aln.is_reverse else '+'
+            flag     = aln.flag
+            mapq     = aln.mapping_quality
+            ref_mean = (ref_start + ref_end) // 2
+            n_hit   += 1
+            hit_set.add((contig, pos))
 
-        chrom  = aln.reference_name
-        strand = '-' if aln.is_reverse else '+'
-        flag   = aln.flag
-        mapq   = aln.mapping_quality
-        ref_mean = (ref_start + ref_end) // 2
+            fout.write(f"{label}\t{contig}\t{pos}\t{chrom}\t{ref_start}\t{ref_end}\t{ref_mean}\t{strand}\t{flag}\t{mapq}\t{n_M}\t{n_eq}\t{n_X}\t{hap}\n")
 
-        if debug:
-            print(f"DEBUG: {contig}:{win_start}-{win_end} -> {chrom}:{ref_start}-{ref_end} ({strand})")
-
-        hits.append((chrom, ref_start, ref_end, strand, flag, mapq, ref_mean, n_M, n_eq, n_X))
     bam.close()
-    return hits
+    print(f"  [{hap}] Done. {n_aln} alignments scanned, {n_hit} hits written.")
+
+    # Write NA for any site that never got a hit
+    n_miss = 0
+    for contig, sites in site_dict.items():
+        for pos, label in sites:
+            if (contig, pos) not in hit_set:
+                fout.write(f"{label}\t{contig}\t{pos}\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\t{hap}\n")
+                n_miss += 1
+    print(f"  [{hap}] {n_miss} sites with no hits written as NA.")
+
+    return hit_set
 
 
 # ======================
 # Main
 # ======================
-with open(OUTPUT_FILE, "w") as fout, open(INPUT_FILE) as fin:
-    fout.write(f"# Window size: ±{window}bp (center±{window}bp)\n")
-    fout.write("contig\tpos\tgrch38_chr\tgrch38_start\tgrch38_end\tgrch38_mean\tstrand\tflag\tmapq\tn_M\tn_eq\tn_X\thap\n")
 
+# Load input sites grouped by contig and haplotype
+hap1_sites = defaultdict(list)
+hap2_sites = defaultdict(list)
+na_lines   = []
+
+with open(INPUT_FILE) as fin:
     for line in fin:
         if not line.strip():
             continue
-        contig, pos = line.strip().split()[:2]
-        pos = int(pos)
+        parts  = line.strip().split()
+        contig = parts[0]
+        pos    = int(parts[1])
+        label  = parts[2] if len(parts) > 2 else "."
 
         if contig.startswith("haplotype1-"):
-            hits = dsa_region_to_grch38_hits(hap1_bam, contig, pos)
-            hap = "hap1"
+            hap1_sites[contig].append((pos, label))
         elif contig.startswith("haplotype2-"):
-            hits = dsa_region_to_grch38_hits(hap2_bam, contig, pos)
-            hap = "hap2"
+            hap2_sites[contig].append((pos, label))
         else:
-            hits = []
-            hap = "unknown"
+            na_lines.append((contig, pos, label))
 
-        if hits:
-            for chrom, rS, rE, strand, flag, mapq, rM, nM, nEq, nX in hits:
-                fout.write(f"{contig}\t{pos}\t{chrom}\t{rS}\t{rE}\t{rM}\t{strand}\t{flag}\t{mapq}\t{nM}\t{nEq}\t{nX}\t{hap}\n")
-        else:
-            fout.write(f"{contig}\t{pos}\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\t{hap}\n")
+print(f"Loaded {sum(len(v) for v in hap1_sites.values())} hap1 sites across {len(hap1_sites)} contigs")
+print(f"Loaded {sum(len(v) for v in hap2_sites.values())} hap2 sites across {len(hap2_sites)} contigs")
 
+with open(OUTPUT_FILE, "w") as fout:
+    fout.write(f"# Window size: ±{window}bp (center±{window}bp)\n")
+    fout.write("label\tcontig\tpos\tgrch38_chr\tgrch38_start\tgrch38_end\tgrch38_mean\tstrand\tflag\tmapq\tn_M\tn_eq\tn_X\thap\n")
+
+    # Write unknown haplotype lines as NA
+    for contig, pos, label in na_lines:
+        fout.write(f"{label}\t{contig}\t{pos}\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tunknown\n")
+
+    print("\nProcessing Hap1 BAM...")
+    process_bam_single_pass(hap1_bam, hap1_sites, fout, "hap1")
+
+    print("\nProcessing Hap2 BAM...")
+    process_bam_single_pass(hap2_bam, hap2_sites, fout, "hap2")
+
+print(f"\nDone. Output: {OUTPUT_FILE}")
